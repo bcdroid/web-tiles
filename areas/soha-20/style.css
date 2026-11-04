@@ -1,0 +1,27 @@
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #05070a;
+}
+
+#world {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+  outline: none;
+  cursor: crosshair;
+}
+
+#help {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 12px;
+  margin: 0;
+  text-align: center;
+  font: 14px/1.4 Georgia, "Times New Roman", serif;
+  letter-spacing: 0.05em;
+  color: rgba(230, 200, 200, 0.55);
+  pointer-events: none;
+}
