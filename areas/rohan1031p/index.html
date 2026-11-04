@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tic Tac Toe</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    margin: 0;
+    background: #1e1e2e;
+    color: #fff;
+  }
+  h1 { margin-bottom: 10px; }
+  #status { font-size: 1.4rem; margin-bottom: 20px; min-height: 1.6em; transition: transform .3s; }
+  #status.pop { animation: pop .5s ease; }
+  @keyframes pop { 0% { transform: scale(1); } 50% { transform: scale(1.3); } 100% { transform: scale(1); } }
+
+  svg { width: 330px; height: 330px; overflow: visible; }
+  .hit { fill: transparent; cursor: pointer; }
+  .hit:hover { fill: rgba(255,255,255,0.05); }
+
+  /* every drawn stroke uses pathLength="1" so this animation works for any shape */
+  .draw {
+    fill: none;
+    stroke-linecap: round;
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    animation: draw var(--dur, .35s) ease-out forwards;
+    animation-delay: var(--delay, 0s);
+  }
+  @keyframes draw { to { stroke-dashoffset: 0; } }
+
+  .grid { stroke: #777; stroke-width: 6; }
+  .x    { stroke: #ff6b6b; stroke-width: 12; }
+  .o    { stroke: #4dabf7; stroke-width: 12; }
+  .win  { stroke: #ffd43b; stroke-width: 10; opacity: .9; }
+
+  #board.tie { animation: shake .5s ease; }
+  #board.tie .mark { opacity: .35; transition: opacity .6s; }
+  @keyframes shake {
+    0%,100% { transform: translateX(0); }
+    20% { transform: translateX(-10px); } 40% { transform: translateX(10px); }
+    60% { transform: translateX(-6px); }  80% { transform: translateX(6px); }
+  }
+
+  .buttons { margin-top: 20px; display: flex; gap: 12px; }
+  button {
+    padding: 10px 24px;
+    font-size: 1rem;
+    border: none;
+    border-radius: 6px;
+    background: #4dabf7;
+    color: #fff;
+    cursor: pointer;
+  }
+  button:hover { background: #339af0; }
+  #auto { background: #845ef7; }
+  #auto:hover { background: #7048e8; }
+</style>
+</head>
+<body>
+  <h1>Tic Tac Toe</h1>
+  <div id="status"></div>
+  <svg id="board" viewBox="0 0 300 300"></svg>
+  <div class="buttons">
+    <button id="restart">Play Again</button>
+    <button id="auto">Watch Auto Play</button>
+  </div>
+
+<script>
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.getElementById('board');
+  const statusEl = document.getElementById('status');
+  const lines = [
+    [0,1,2],[3,4,5],[6,7,8],
+    [0,3,6],[1,4,7],[2,5,8],
+    [0,4,8],[2,4,6]
+  ];
+  let board, current, gameOver, busy, autoTimer, gameId = 0;
+
+  function el(tag, attrs, parent = svg) {
+    const e = document.createElementNS(NS, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    parent.appendChild(e);
+    return e;
+  }
+
+  function center(i) {
+    return [(i % 3) * 100 + 50, Math.floor(i / 3) * 100 + 50];
+  }
+
+  function start(auto = false) {
+    gameId++;
+    clearTimeout(autoTimer);
+    board = Array(9).fill('');
+    current = 'X';
+    gameOver = false;
+    busy = true;
+    svg.innerHTML = '';
+    svg.classList.remove('tie');
+
+    // animate the grid being drawn
+    const grid = [[100,5,100,295],[200,5,200,295],[5,100,295,100],[5,200,295,200]];
+    grid.forEach(([x1,y1,x2,y2], n) => {
+      el('line', { x1, y1, x2, y2, pathLength: 1, class: 'draw grid',
+                   style: `--delay:${n * 0.12}s;--dur:.3s` });
+    });
+
+    // invisible click areas
+    for (let i = 0; i < 9; i++) {
+      const [cx, cy] = center(i);
+      const r = el('rect', { x: cx - 50, y: cy - 50, width: 100, height: 100, class: 'hit' });
+      r.addEventListener('click', () => { if (!auto) play(i); });
+    }
+
+    statusEl.textContent = auto ? 'Auto play...' : "Player 1's turn (X)";
+    const id = gameId;
+    setTimeout(() => {
+      if (id !== gameId) return;
+      busy = false;
+      updateStatus();
+      if (auto) autoMove(id);
+    }, 750);
+  }
+
+  function drawMark(i, player) {
+    const [cx, cy] = center(i);
+    const g = el('g', { class: 'mark' });
+    if (player === 'X') {
+      el('line', { x1: cx-28, y1: cy-28, x2: cx+28, y2: cy+28, pathLength: 1,
+                   class: 'draw x', style: '--dur:.25s' }, g);
+      el('line', { x1: cx+28, y1: cy-28, x2: cx-28, y2: cy+28, pathLength: 1,
+                   class: 'draw x', style: '--dur:.25s;--delay:.25s' }, g);
+    } else {
+      // path circle starting at the top, drawn clockwise
+      el('path', { d: `M ${cx} ${cy-30} a 30 30 0 1 1 0 60 a 30 30 0 1 1 0 -60`,
+                   pathLength: 1, class: 'draw o', style: '--dur:.5s' }, g);
+    }
+  }
+
+  function play(i) {
+    if (gameOver || busy || board[i]) return;
+    busy = true;
+    board[i] = current;
+    drawMark(i, current);
+    const id = gameId;
+
+    setTimeout(() => {
+      if (id !== gameId) return;
+      busy = false;
+      const winLine = lines.find(([a,b,c]) => board[a] && board[a] === board[b] && board[a] === board[c]);
+      if (winLine) return finishWin(winLine);
+      if (board.every(v => v)) return finishTie();
+      current = current === 'X' ? 'O' : 'X';
+      updateStatus();
+    }, 520);
+  }
+
+  function finishWin([a, , c]) {
+    gameOver = true;
+    const [x1, y1] = center(a), [x2, y2] = center(c);
+    const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy);
+    const ex = dx / len * 40, ey = dy / len * 40;  // extend past the end marks
+    el('line', { x1: x1 - ex, y1: y1 - ey, x2: x2 + ex, y2: y2 + ey, pathLength: 1,
+                 class: 'draw win', style: '--dur:.5s' });
+    announce((current === 'X' ? 'Player 1 (X)' : 'Player 2 (O)') + ' wins! 🎉');
+  }
+
+  function finishTie() {
+    gameOver = true;
+    svg.classList.add('tie');
+    announce("It's a tie! 🤝");
+  }
+
+  function announce(text) {
+    statusEl.textContent = text;
+    statusEl.classList.remove('pop');
+    void statusEl.offsetWidth;  // restart the animation
+    statusEl.classList.add('pop');
+  }
+
+  function updateStatus() {
+    statusEl.textContent = current === 'X' ? "Player 1's turn (X)" : "Player 2's turn (O)";
+  }
+
+  // ---- Auto play: each side wins if it can, blocks if it must, otherwise picks randomly ----
+  function pickMove() {
+    const empty = board.map((v, i) => v ? null : i).filter(i => i !== null);
+    const opp = current === 'X' ? 'O' : 'X';
+    for (const who of [current, opp]) {
+      for (const [a,b,c] of lines) {
+        const trio = [a,b,c];
+        const mine = trio.filter(i => board[i] === who).length;
+        const open = trio.filter(i => !board[i]);
+        if (mine === 2 && open.length === 1 && Math.random() < 0.85) return open[0];
+      }
+    }
+    return empty[Math.floor(Math.random() * empty.length)];
+  }
+
+  function autoMove(id) {
+    if (id !== gameId || gameOver) return;
+    play(pickMove());
+    autoTimer = setTimeout(() => autoMove(id), 1000);
+  }
+
+  document.getElementById('restart').addEventListener('click', () => start(false));
+  document.getElementById('auto').addEventListener('click', () => start(true));
+  start(false);
+</script>
+</body>
+</html>
